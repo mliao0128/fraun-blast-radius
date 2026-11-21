@@ -105,4 +105,3 @@ class TestReplay:
             return
         for number in passed:
             os.write(fd, f"{number}\n".encode())
-

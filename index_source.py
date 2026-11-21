@@ -22,4 +22,3 @@ def build(root):
 if __name__ == "__main__":
     with gzip.open(sys.argv[2], "wt", encoding="utf-8", compresslevel=5) as out:
         json.dump(build(Path(sys.argv[1])), out, separators=(",", ":"))
-

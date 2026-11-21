@@ -21,4 +21,3 @@ def pack(numbers, ms):
         if score < best:
             best, groups = score, bins
     return best, groups
-

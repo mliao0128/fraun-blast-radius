@@ -159,4 +159,3 @@ def main(root, inventory, output):
 
 if __name__ == "__main__":
     main(*sys.argv[1:])
-

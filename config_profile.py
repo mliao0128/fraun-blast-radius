@@ -101,4 +101,3 @@ def instrument_config(cls, node, relative):
         assignment.value = ast.copy_location(ast.Call(ast.Name("_br_config", ast.Load()),
             [ast.Constant(mark), assignment.value], []), assignment.value)
     return cls.generic_visit(node)
-

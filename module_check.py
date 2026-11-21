@@ -26,4 +26,3 @@ def imports_cleanly(source, changes, paths, budget):
         except subprocess.TimeoutExpired:
             return False
         return check.returncode == 0
-

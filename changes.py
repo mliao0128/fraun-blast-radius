@@ -126,4 +126,3 @@ def shadow_tree(base, destination, changes):
     for path, content in overrides.items():
         if content is not None:
             (destination / path).write_text(content, encoding="utf-8")
-

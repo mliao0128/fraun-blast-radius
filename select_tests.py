@@ -232,4 +232,3 @@ class Impact:
                     direct = self.lookup_lines(c.path, [line])
                     selected.update(self.statement(c.path, parents, spans, line, direct, not edit.removed))
         return selected, probe
-

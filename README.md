@@ -50,4 +50,3 @@ Gligoric, Eloussi and Marinov's Ekstazi work measures test dependencies on files
 Liu and colleagues use semantic differences between code versions to improve regression test selection. Just, Ernst and Fraser show how observations on an unchanged program can identify when a change can alter execution state. We apply that distinction to supported Python comparison edits. [FineRTS](https://doi.org/10.1145/3597926.3598086) · [Efficient mutation analysis](https://homes.cs.washington.edu/~mernst/pubs/state-infection-issta2014-abstract.html)
 
 Wang, Pradel and Liu examine Python name dependencies and the large sets that can result from eager imports. This motivated tracking the class that defines an attribute and the function actually invoked after a dispatch dictionary is inherited. [Names Are All You Need](https://arxiv.org/abs/2605.25356)
-

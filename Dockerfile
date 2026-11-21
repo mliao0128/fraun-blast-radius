@@ -11,4 +11,3 @@ RUN python -m compileall -q -j 4 --invalidation-mode checked-hash /upstream/sqlg
 COPY *.py *.json.gz ./
 ENV PYTHONDONTWRITEBYTECODE=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 SKIP_INTEGRATION=0
 CMD ["python","/app/run.py"]
-
