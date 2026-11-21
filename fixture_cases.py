@@ -37,17 +37,30 @@ def _touched(path, old_source, new_source):
     if ast.dump(old) == ast.dump(new):
         return []
     lines = set()
+
     def visit(a, b, func=None, statement=None):
         if isinstance(a, ast.expr) and isinstance(b, ast.expr) and func and statement:
             if ast.dump(a) == ast.dump(b):
                 return True
             # A replacement that introduces a local declaration can change names
             # earlier in the function. Limit this path to ordinary expressions.
-            exceptional = (ast.NamedExpr, ast.Lambda, ast.Yield, ast.YieldFrom, ast.Await,
-                           ast.ListComp, ast.DictComp, ast.SetComp, ast.GeneratorExp)
-            if not any(isinstance(x, exceptional) or (
-                isinstance(x, ast.Name) and not isinstance(x.ctx, ast.Load)
-            ) for expr in (a, b) for x in ast.walk(expr)):
+            exceptional = (
+                ast.NamedExpr,
+                ast.Lambda,
+                ast.Yield,
+                ast.YieldFrom,
+                ast.Await,
+                ast.ListComp,
+                ast.DictComp,
+                ast.SetComp,
+                ast.GeneratorExp,
+            )
+            if not any(
+                isinstance(x, exceptional)
+                or (isinstance(x, ast.Name) and not isinstance(x.ctx, ast.Load))
+                for expr in (a, b)
+                for x in ast.walk(expr)
+            ):
                 return record(func, statement)
         if type(a) is not type(b):
             if isinstance(a, (ast.operator, ast.cmpop, ast.unaryop, ast.boolop)) and (
@@ -56,14 +69,20 @@ def _touched(path, old_source, new_source):
                 return record(func, statement)
             return False
         if isinstance(a, list):
-            return len(a) == len(b) and all(visit(x, y, func, statement) for x, y in zip(a, b))
+            return len(a) == len(b) and all(
+                visit(x, y, func, statement) for x, y in zip(a, b)
+            )
         if not isinstance(a, ast.AST):
             return a == b
         if isinstance(a, ast.stmt):
             statement = a
         if isinstance(a, ast.Constant):
             return ast.dump(a) == ast.dump(b) or record(func, statement)
-        if isinstance(a, ast.Name) and isinstance(a.ctx, ast.Load) and isinstance(b.ctx, ast.Load):
+        if (
+            isinstance(a, ast.Name)
+            and isinstance(a.ctx, ast.Load)
+            and isinstance(b.ctx, ast.Load)
+        ):
             return a.id == b.id or record(func, statement)
         for field in a._fields:
             nested = func
@@ -76,10 +95,21 @@ def _touched(path, old_source, new_source):
         return True
 
     def record(func, stmt):
-        if func is None or not isinstance(stmt, (
-            ast.Return, ast.Assign, ast.AnnAssign, ast.Expr, ast.If, ast.While, ast.Assert,
-            ast.Raise, ast.For, ast.AugAssign,
-        )):
+        if func is None or not isinstance(
+            stmt,
+            (
+                ast.Return,
+                ast.Assign,
+                ast.AnnAssign,
+                ast.Expr,
+                ast.If,
+                ast.While,
+                ast.Assert,
+                ast.Raise,
+                ast.For,
+                ast.AugAssign,
+            ),
+        ):
             return False
         if any(isinstance(n, (ast.Global, ast.Nonlocal)) for n in ast.walk(func)):
             return False
@@ -88,16 +118,35 @@ def _touched(path, old_source, new_source):
                 node.ctx, (ast.Store, ast.Del)
             ):
                 return False
-            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and (
-                node.func.attr in {"setdefault", "update", "clear", "add", "discard", "remove",
-                                   "append", "extend", "insert", "pop", "popitem"}
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and (
+                    node.func.attr
+                    in {
+                        "setdefault",
+                        "update",
+                        "clear",
+                        "add",
+                        "discard",
+                        "remove",
+                        "append",
+                        "extend",
+                        "insert",
+                        "pop",
+                        "popitem",
+                    }
+                )
             ):
                 return False
-        header = stmt.test if isinstance(stmt, (ast.If, ast.While)) else (
-            stmt.iter if isinstance(stmt, ast.For) else stmt
+        header = (
+            stmt.test
+            if isinstance(stmt, (ast.If, ast.While))
+            else (stmt.iter if isinstance(stmt, ast.For) else stmt)
         )
         lines.update(range(stmt.lineno, header.end_lineno + 1))
         return True
+
     return sorted(lines) if visit(old, new) and lines else None
 
 
@@ -132,6 +181,7 @@ class LocalPool:
         from concurrent.futures import Future
         from multiprocessing.reduction import ForkingPickler
         import pickle
+
         self.future = Future
         self.transfer = lambda value: pickle.loads(ForkingPickler.dumps(value))
         initializer(*self.transfer(initargs))
@@ -158,6 +208,7 @@ def replay(nodeid, indices=None, recorder=None):
         raise ValueError(nodeid)
     from unittest.mock import patch
     from tests import test_executor
+
     suite = test_executor.TestExecutor
     method = nodeid.split("::")[-1]
     field = "tpch_sqls" if nodeid == TESTS[0] else "tpcds_sqls"
@@ -181,7 +232,9 @@ def replay(nodeid, indices=None, recorder=None):
 
 def main(args):
     if len(args) != 4 or args[0] != "--run":
-        raise SystemExit("Usage: fixture_cases.py --run PATCHED_ROOT NODEID JSON_INDICES")
+        raise SystemExit(
+            "Usage: fixture_cases.py --run PATCHED_ROOT NODEID JSON_INDICES"
+        )
     root = Path(args[1]).resolve()
     sys.path.insert(0, str(root))
     os.chdir(root)

@@ -1,4 +1,5 @@
 """Index reads of class attributes and names in the pristine SQLGlot sources."""
+
 import ast
 import gzip
 import json
@@ -13,10 +14,15 @@ def build(root):
         for path in (root / folder).rglob("*.py"):
             file = path.relative_to(root).as_posix()
             for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-                if isinstance(node, (ast.Name, ast.Attribute)) and isinstance(node.ctx, ast.Load):
+                if isinstance(node, (ast.Name, ast.Attribute)) and isinstance(
+                    node.ctx, ast.Load
+                ):
                     key = node.id if isinstance(node, ast.Name) else node.attr
                     refs[key][file].add(node.lineno)
-    return {name: {path: sorted(lines) for path, lines in paths.items()} for name, paths in refs.items()}
+    return {
+        name: {path: sorted(lines) for path, lines in paths.items()}
+        for name, paths in refs.items()
+    }
 
 
 if __name__ == "__main__":

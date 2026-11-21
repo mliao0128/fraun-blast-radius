@@ -1,4 +1,5 @@
 """Select invocations of a single changed callable in a class dispatch dictionary."""
+
 import ast
 import functools
 import gzip
@@ -13,7 +14,11 @@ def entries(tree):
         for definition in cls.body:
             if not isinstance(definition, (ast.Assign, ast.AnnAssign)):
                 continue
-            targets = definition.targets if isinstance(definition, ast.Assign) else [definition.target]
+            targets = (
+                definition.targets
+                if isinstance(definition, ast.Assign)
+                else [definition.target]
+            )
             if len(targets) != 1 or not isinstance(targets[0], ast.Name):
                 continue
             table = definition.value
@@ -38,7 +43,11 @@ def same_factory_argument(a, b):
     # A changed expression evaluated at import could affect the whole module.
     if ast.dump(a) == ast.dump(b):
         return True
-    return isinstance(a, ast.Constant) and isinstance(b, ast.Constant) and type(a.value) is type(b.value)
+    return (
+        isinstance(a, ast.Constant)
+        and isinstance(b, ast.Constant)
+        and type(a.value) is type(b.value)
+    )
 
 
 def compatible(a, b):
@@ -46,11 +55,16 @@ def compatible(a, b):
         return ast.dump(a.args) == ast.dump(b.args)
     if not isinstance(a, ast.Call) or not isinstance(b, ast.Call):
         return False
-    return (ast.dump(a.func) == ast.dump(b.func) and len(a.args) == len(b.args)
-            and all(same_factory_argument(x, y) for x, y in zip(a.args, b.args))
-            and len(a.keywords) == len(b.keywords)
-            and all(x.arg == y.arg and same_factory_argument(x.value, y.value)
-                    for x, y in zip(a.keywords, b.keywords)))
+    return (
+        ast.dump(a.func) == ast.dump(b.func)
+        and len(a.args) == len(b.args)
+        and all(same_factory_argument(x, y) for x, y in zip(a.args, b.args))
+        and len(a.keywords) == len(b.keywords)
+        and all(
+            x.arg == y.arg and same_factory_argument(x.value, y.value)
+            for x, y in zip(a.keywords, b.keywords)
+        )
+    )
 
 
 def candidates(change):
@@ -61,7 +75,11 @@ def candidates(change):
         return None
     lo = min(e.start + 1 for e in change.edits)
     hi = max(e.start + max(1, len(e.removed)) for e in change.edits)
-    possible = {mark for mark, (end, _) in sites.items() if int(mark.split(":")[0]) <= lo and hi <= end}
+    possible = {
+        mark
+        for mark, (end, _) in sites.items()
+        if int(mark.split(":")[0]) <= lo and hi <= end
+    }
     if not possible:
         return None
     old_tree, new_tree = ast.parse(change.old), ast.parse(change.new)
@@ -70,7 +88,11 @@ def candidates(change):
         return None
     for (table, i, old), (_, _, new) in zip(old_entries, new_entries):
         mark = f"{old.lineno}:{old.col_offset}"
-        if mark not in possible or ast.dump(old) == ast.dump(new) or not compatible(old, new):
+        if (
+            mark not in possible
+            or ast.dump(old) == ast.dump(new)
+            or not compatible(old, new)
+        ):
             continue
         table.values[i] = new
         try:

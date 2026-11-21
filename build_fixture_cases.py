@@ -27,7 +27,7 @@ class Trace:
     @functools.cache
     def relative(self, name):
         if name.startswith(self.root + "sqlglot" + os.sep):
-            return name[len(self.root):].replace(os.sep, "/")
+            return name[len(self.root) :].replace(os.sep, "/")
         return None
 
     def line(self, code, line):
@@ -45,10 +45,14 @@ class Trace:
         self.mon.set_events(self.tool, 0)
         masks = list(sorted({v for row in self.rows.values() for v in row.values()}))
         indices = {v: i for i, v in enumerate(masks)}
-        return {"count": count, "masks": masks, "paths": {
-            path: {line: indices[mask] for line, mask in sorted(values.items())}
-            for path, values in sorted(self.rows.items())
-        }}
+        return {
+            "count": count,
+            "masks": masks,
+            "paths": {
+                path: {line: indices[mask] for line, mask in sorted(values.items())}
+                for path, values in sorted(self.rows.items())
+            },
+        }
 
 
 def main():
@@ -67,12 +71,15 @@ def main():
         output.write_text(json.dumps(recorder.finish(count), separators=(",", ":")))
         return
     import tempfile
+
     result = {}
     with tempfile.TemporaryDirectory() as temp:
         for i, nodeid in enumerate(TESTS):
             part = Path(temp) / f"{i}.json"
-            subprocess.run([sys.executable, __file__, str(root), str(part), "--one", nodeid],
-                           check=True)
+            subprocess.run(
+                [sys.executable, __file__, str(root), str(part), "--one", nodeid],
+                check=True,
+            )
             result[nodeid] = json.loads(part.read_text())
     with gzip.GzipFile(output, "wb", compresslevel=6, mtime=0) as stream:
         stream.write(json.dumps(result, separators=(",", ":")).encode())

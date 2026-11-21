@@ -3,6 +3,7 @@
 Python 3.13: python build_dispatch.py CHECKOUT tests.json dispatch.json.gz
 Use the organizer's dependency lock and set SKIP_INTEGRATION=0.
 """
+
 import ast
 import builtins
 import functools
@@ -31,16 +32,24 @@ def factory_bodies(path):
         if not isinstance(definition, ast.FunctionDef) or definition.decorator_list:
             continue
         body = list(definition.body)
-        if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant):
+        if (
+            body
+            and isinstance(body[0], ast.Expr)
+            and isinstance(body[0].value, ast.Constant)
+        ):
             body.pop(0)
         if not body or not isinstance(body[-1], ast.Return):
             continue
         value = body[-1].value
         if len(body) == 1 and isinstance(value, ast.Lambda):
             returned = value
-        elif (len(body) == 2 and isinstance(body[0], ast.FunctionDef)
-              and not body[0].decorator_list and isinstance(value, ast.Name)
-              and value.id == body[0].name):
+        elif (
+            len(body) == 2
+            and isinstance(body[0], ast.FunctionDef)
+            and not body[0].decorator_list
+            and isinstance(value, ast.Name)
+            and value.id == body[0].name
+        ):
             returned = body[0]
         else:
             continue
@@ -67,9 +76,13 @@ class Dispatch(Recorder):
         code = fn.__code__
         if factory:
             parent = fn.__qualname__.split(".<locals>.")
-            if (len(parent) < 2 or parent[-2].split(".")[-1] != factory
-                    or not code.co_filename.startswith(self.root)
-                    or (factory, code.co_firstlineno) not in factory_bodies(code.co_filename)):
+            if (
+                len(parent) < 2
+                or parent[-2].split(".")[-1] != factory
+                or not code.co_filename.startswith(self.root)
+                or (factory, code.co_firstlineno)
+                not in factory_bodies(code.co_filename)
+            ):
                 return fn
         try:
             captures = tuple(id(cell.cell_contents) for cell in (fn.__closure__ or ()))
@@ -104,7 +117,9 @@ def main(root, inventory, output):
     root = Path(root).resolve()
     inventory = Path(inventory).resolve()
     output = Path(output).resolve()
-    if (root / ".git" / "HEAD").read_text().strip() != "eb11aec4be8cb2122afe713a4816662c3f0fb2fa":
+    if (
+        root / ".git" / "HEAD"
+    ).read_text().strip() != "eb11aec4be8cb2122afe713a4816662c3f0fb2fa":
         raise ValueError("Use the clean, pinned, detached checkout")
     os.chdir(root)
     sys.path.insert(0, str(root))
@@ -124,27 +139,51 @@ def main(root, inventory, output):
             if isinstance(expr, ast.Call):
                 if not isinstance(expr.func, (ast.Name, ast.Attribute)):
                     continue
-                factory = expr.func.id if isinstance(expr.func, ast.Name) else expr.func.attr
+                factory = (
+                    expr.func.id if isinstance(expr.func, ast.Name) else expr.func.attr
+                )
             mark = f"{relative}|{expr.lineno}:{expr.col_offset}"
-            wrapper = ast.Call(ast.Name("_br_dispatch_value", ast.Load()), [
-                ast.Constant(mark), ast.Constant(expr.end_lineno), ast.Constant(factory), expr
-            ], [])
+            wrapper = ast.Call(
+                ast.Name("_br_dispatch_value", ast.Load()),
+                [
+                    ast.Constant(mark),
+                    ast.Constant(expr.end_lineno),
+                    ast.Constant(factory),
+                    expr,
+                ],
+                [],
+            )
             table.values[i] = ast.copy_location(wrapper, expr)
-        return compile(ast.fix_missing_locations(tree), str(path), "exec", dont_inherit=True)
+        return compile(
+            ast.fix_missing_locations(tree), str(path), "exec", dont_inherit=True
+        )
 
     def observed_pool(cls, *args, **kwargs):
         pool = serializing_pool(cls, *args, **kwargs)
         submit = pool.submit
+
         def record(fn, /, *args, **kwargs):
             trace.pool_submitters.add(trace.active)
             return submit(fn, *args, **kwargs)
+
         pool.submit = record
         return pool
 
-    with patch.object(SourceFileLoader, "get_code", get_code), patch.object(ProcessPoolExecutor, "__new__", observed_pool):
-        result = pytest.main(["-q", "--tb=short", "--disable-warnings", "tests"], plugins=[trace])
-    if result != 0 or len(trace.status) != len(ids) or set(trace.status.values()) != {"passed"}:
-        raise RuntimeError(f"Profiling run incomplete: {result}, {len(trace.status)}/{len(ids)}")
+    with (
+        patch.object(SourceFileLoader, "get_code", get_code),
+        patch.object(ProcessPoolExecutor, "__new__", observed_pool),
+    ):
+        result = pytest.main(
+            ["-q", "--tb=short", "--disable-warnings", "tests"], plugins=[trace]
+        )
+    if (
+        result != 0
+        or len(trace.status) != len(ids)
+        or set(trace.status.values()) != {"passed"}
+    ):
+        raise RuntimeError(
+            f"Profiling run incomplete: {result}, {len(trace.status)}/{len(ids)}"
+        )
     files = defaultdict(dict)
     for site, end in sorted(trace.ends.items()):
         if site in trace.unknown:
@@ -153,8 +192,10 @@ def main(root, inventory, output):
         mask = trace.observed[site]
         files[path][pos] = [end, [i for i in range(len(ids)) if mask & (1 << i)]]
     encode({"ids": ids, "files": files}, output)
-    print(f"Mapped {sum(map(len, files.values()))} dispatch entries across {len(files)} files, "
-          f"{len(trace.pool_submitters)} pool submitters, {len(trace.unknown)} import-time exclusions")
+    print(
+        f"Mapped {sum(map(len, files.values()))} dispatch entries across {len(files)} files, "
+        f"{len(trace.pool_submitters)} pool submitters, {len(trace.unknown)} import-time exclusions"
+    )
 
 
 if __name__ == "__main__":

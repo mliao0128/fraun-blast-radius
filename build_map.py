@@ -3,6 +3,7 @@
 Usage: python build_map.py CHECKOUT tests.json impact.json.gz
 Install the organizer's test dependencies in this interpreter before running.
 """
+
 import argparse
 import functools
 import gzip
@@ -21,9 +22,12 @@ import pytest
 
 
 def encode(data, target):
-    with open(target, "wb") as handle, gzip.GzipFile(
-        fileobj=handle, mode="wb", filename="", compresslevel=6, mtime=0
-    ) as out:
+    with (
+        open(target, "wb") as handle,
+        gzip.GzipFile(
+            fileobj=handle, mode="wb", filename="", compresslevel=6, mtime=0
+        ) as out,
+    ):
         out.write(json.dumps(data, separators=(",", ":")).encode())
 
 
@@ -61,7 +65,7 @@ class Recorder:
     @functools.lru_cache(None)
     def relative(self, name):
         if name.startswith(self.root):
-            return name[len(self.root):].replace(os.sep, "/")
+            return name[len(self.root) :].replace(os.sep, "/")
         return ""
 
     def line(self, code, line):
@@ -130,11 +134,17 @@ def main():
     # The official slim image omits git. A pinned detached checkout stores the
     # full object name in .git/HEAD, so the map needs no extra OS packages.
     head = (root / ".git" / "HEAD").read_text().strip()
-    rev = head if not head.startswith("ref:") else subprocess.check_output(
-        ["git", "-C", root, "rev-parse", "HEAD"], text=True
-    ).strip()
+    rev = (
+        head
+        if not head.startswith("ref:")
+        else subprocess.check_output(
+            ["git", "-C", root, "rev-parse", "HEAD"], text=True
+        ).strip()
+    )
     if rev != "eb11aec4be8cb2122afe713a4816662c3f0fb2fa":
-        raise ValueError("Coverage must be generated on the competition's pinned revision")
+        raise ValueError(
+            "Coverage must be generated on the competition's pinned revision"
+        )
     os.chdir(root)
     sys.path.insert(0, str(root))
     recorder = Recorder(root, ids)
@@ -142,6 +152,7 @@ def main():
     pytest_args = ["-q", "--tb=short", "--disable-warnings"]
     used_pool = 0
     native_submit = ProcessPoolExecutor.submit
+
     def watch_submission(executor, *args, **kwargs):
         nonlocal used_pool
         used_pool |= recorder.active
@@ -155,6 +166,7 @@ def main():
     # initializer and future interface and running callbacks in this interpreter.
     pool_nodes = [name for i, name in enumerate(ids) if used_pool & (1 << i)]
     if pool_nodes:
+
         def transit(value):
             return ForkingPickler.loads(ForkingPickler.dumps(value))
 
@@ -163,26 +175,39 @@ def main():
                 def deliver():
                     target, positional, named = transit((fn, args, kwargs))
                     return transit(target(*positional, **named))
+
                 return super().submit(deliver)
 
         def same_interpreter_pool(cls, *args, initializer=None, initargs=(), **kwargs):
             if initializer is not None:
                 initializer, initargs = transit((initializer, initargs))
             return TracedPool(max_workers=1, initializer=initializer, initargs=initargs)
+
         with patch.object(ProcessPoolExecutor, "__new__", same_interpreter_pool):
             replay = pytest.main([*pytest_args, *pool_nodes], plugins=[recorder])
         if replay != 0:
-            raise RuntimeError("Child-work replay failed, please inspect the pytest log")
+            raise RuntimeError(
+                "Child-work replay failed, please inspect the pytest log"
+            )
     recorder.mon.set_events(recorder.tool, 0)
-    if code != 0 or len(recorder.status) != len(ids) or set(recorder.status.values()) != {"passed"}:
-        raise RuntimeError(f"Incomplete test run: pytest={code}, recorded={len(recorder.status)}/{len(ids)}")
+    if (
+        code != 0
+        or len(recorder.status) != len(ids)
+        or set(recorder.status.values()) != {"passed"}
+    ):
+        raise RuntimeError(
+            f"Incomplete test run: pytest={code}, recorded={len(recorder.status)}/{len(ids)}"
+        )
     imports = defaultdict(int)
     modules = sorted({name.split("::")[0] for name in ids})
+
     def import_probe(path):
         module_name = path[:-3].replace("/", ".")
         proc = subprocess.run(
             [sys.executable, str(Path(__file__).resolve()), "--probe", module_name],
-            capture_output=True, text=True, check=True,
+            capture_output=True,
+            text=True,
+            check=True,
         )
         return path, json.loads(proc.stdout.splitlines()[-1])
 
@@ -195,6 +220,7 @@ def main():
             imports[source] |= mask
     pool_ids = {}
     pools = []
+
     def intern(mask):
         if mask not in pool_ids:
             pool_ids[mask] = len(pools)
@@ -206,19 +232,27 @@ def main():
             pools.append(members)
             return len(pools) - 1
         return pool_ids[mask]
+
     result = {
         "nodeids": ids,
         "pool_nodeids": pool_nodes,
-        "files": {path: {line: intern(mask) for line, mask in sorted(rows.items())}
-                  for path, rows in sorted(recorder.lines.items())},
+        "files": {
+            path: {line: intern(mask) for line, mask in sorted(rows.items())}
+            for path, rows in sorted(recorder.lines.items())
+        },
         "reads": {path: intern(mask) for path, mask in sorted(recorder.reads.items())},
         "imports": {path: intern(mask) for path, mask in sorted(imports.items())},
         "pools": pools,
-        "baseline_nonpass": {key: value for key, value in recorder.status.items() if value != "passed"},
+        "baseline_nonpass": {
+            key: value for key, value in recorder.status.items() if value != "passed"
+        },
         "revision": rev,
     }
     encode(result, output)
-    print(f"Mapped {len(ids)} tests in {len(result['files'])} files ({len(pools)} unique sets)", file=sys.stderr)
+    print(
+        f"Mapped {len(ids)} tests in {len(result['files'])} files ({len(pools)} unique sets)",
+        file=sys.stderr,
+    )
 
 
 if __name__ == "__main__":

@@ -23,9 +23,9 @@ For the organizer's sample, score the output outside the container with the scor
 The entry uses execution profiles from the unmodified SQLGlot commit eb11aec4be8cb2122afe713a4816662c3f0fb2fa. Runtime test numbers are resolved by pytest node ID.
 
 1. Parse the patch in the coordinates of the original file. Use the clean suite's statement coverage, import dependencies and fixture reads to find affected tests. A short-circuit edit can change whether a later operand executes, so the enclosing predicate also matters.
-2. For supported edits, narrow the selection using observations from clean tests. These include the ordering and equality of comparison operands, reads of class configuration, invocation of callable entries in dispatch tables, and individual queries in the large executor tests. The profiler accounts for serialization into and out of process-pool workers.
+2. For supported edits, narrow the selection using observations from clean tests. These include the ordering and equality of comparison operands, reads of class configuration, invocation of callable entries in dispatch tables, parser token lookahead, consumption of generated closures, and individual queries in the large executor tests. The profiler accounts for serialization into and out of process-pool workers.
 3. For changes to declarations, check whether the patched module initializes. Where a short replay can reduce the simulated cost, run candidate tests on a separate patched source tree. Unfinished and failing probes remain selected.
-4. Sort the selected tests by recorded duration, try up to eight worker counts and keep the least expensive partition under the organizer's cost formula.
+4. Sort the selected tests by recorded duration, try up to eight worker counts and keep the least expensive partition under the organizer's cost formula. Spare capacity on shorter workers can cover additional tests at the same simulated cost.
 
 The profiles are empirical. Dynamic loading, cached state, external code and interactions between tests can hide a dependency. A timeout or unknown diff format expands the selection. Small changes can still require a long-running test.
 
@@ -39,8 +39,19 @@ python build_map.py "$SRC" "$TESTS" impact.json.gz
 python build_bindings.py "$SRC" "$TESTS" bindings.json.gz
 python build_predicates.py "$SRC" "$TESTS" predicates.json.gz
 python build_dispatch.py "$SRC" "$TESTS" dispatch.json.gz
+python build_guards.py "$SRC" "$TESTS" guards.json.gz
+python build_match_tokens.py "$SRC" "$TESTS" match_tokens.json.gz
+python build_factory.py "$SRC" "$TESTS" factories.json.gz
 python build_fixture_cases.py "$SRC" fixture_cases.json.gz
 python index_source.py "$SRC" refs.json.gz
+```
+
+For the fixture-rename map, trace the baseline suite under Linux strace. Set TRACE_DIR to an empty temporary directory and TIMELINE to a path outside that directory.
+
+```sh
+mkdir -p "$TRACE_DIR"
+strace -ff -qq -yy -ttt -e trace=%file,getdents,getdents64,io_uring_enter -o "$TRACE_DIR/process" python fixture_moves.py collect "$SRC" "$TESTS" "$TIMELINE"
+python fixture_moves.py summarize "$TIMELINE" "$TRACE_DIR" fixture_moves.json.gz
 ```
 
 ## Research

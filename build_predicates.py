@@ -27,10 +27,14 @@ import pytest
 
 
 OPS = {
-    ast.Is: ("is", operator.is_), ast.IsNot: ("is not", operator.is_not),
-    ast.Eq: ("==", operator.eq), ast.NotEq: ("!=", operator.ne),
-    ast.Lt: ("<", operator.lt), ast.LtE: ("<=", operator.le),
-    ast.Gt: (">", operator.gt), ast.GtE: (">=", operator.ge),
+    ast.Is: ("is", operator.is_),
+    ast.IsNot: ("is not", operator.is_not),
+    ast.Eq: ("==", operator.eq),
+    ast.NotEq: ("!=", operator.ne),
+    ast.Lt: ("<", operator.lt),
+    ast.LtE: ("<=", operator.le),
+    ast.Gt: (">", operator.gt),
+    ast.GtE: (">=", operator.ge),
 }
 OP_PATTERN = re.compile(r"\bis\s+not\b|\bis\b|<=|>=|==|!=|<|>")
 NUMBERS = (int, bool, float)
@@ -56,9 +60,18 @@ def relation(left, right):
     identity = int(left is right)
     if left is None or right is None:
         other = type(right if left is None else left)
-        if other in (type(None), int, bool, float, str, bytes, list, tuple, set, dict) or (
-            other.__eq__ is object.__eq__ and other.__ne__ is object.__ne__
-        ):
+        if other in (
+            type(None),
+            int,
+            bool,
+            float,
+            str,
+            bytes,
+            list,
+            tuple,
+            set,
+            dict,
+        ) or (other.__eq__ is object.__eq__ and other.__ne__ is object.__ne__):
             return 32 | identity | (identity << 1)
         return 0
     a, b = type(left), type(right)
@@ -73,8 +86,14 @@ def relation(left, right):
             return 32 | identity | (identity << 1) if a is b else 0
         if a != b and not (a in NUMBERS and b in NUMBERS):
             return 32 | identity
-    return (32 | 16 | identity | (int(left == right) << 1)
-            | (int(left < right) << 2) | (int(left > right) << 3))
+    return (
+        32
+        | 16
+        | identity
+        | (int(left == right) << 1)
+        | (int(left < right) << 2)
+        | (int(left > right) << 3)
+    )
 
 
 class Recorder:
@@ -95,7 +114,9 @@ class Recorder:
             self.unscoped.add(index)
         else:
             per_test = self.observed[index]
-            per_test[self.current] = per_test.get(self.current, 0) | (1 << relation(left, right))
+            per_test[self.current] = per_test.get(self.current, 0) | (
+                1 << relation(left, right)
+            )
         return result
 
     @pytest.hookimpl(wrapper=True)
@@ -141,13 +162,20 @@ class Recorder:
             for test, mask in self.observed[index].items():
                 groups[mask].append(test)
             sites[file][line].append([prefix, op, suffix, groups])
-        result = {"ids": list(self.ids), "incomplete": sorted(
-            set(self.ids.values()) - (self.completed - self.failed)
-        ), "sites": sites}
+        result = {
+            "ids": list(self.ids),
+            "incomplete": sorted(
+                set(self.ids.values()) - (self.completed - self.failed)
+            ),
+            "sites": sites,
+        }
         with gzip.GzipFile(path, "wb", compresslevel=6, mtime=0) as out:
             out.write(json.dumps(result, separators=(",", ":")).encode())
-        print(f"Recorded {sum(len(lines) for lines in sites.values())} predicate lines; "
-              f"{len(result['incomplete'])} incomplete tests", file=sys.stderr)
+        print(
+            f"Recorded {sum(len(lines) for lines in sites.values())} predicate lines; "
+            f"{len(result['incomplete'])} incomplete tests",
+            file=sys.stderr,
+        )
 
 
 class Instrument(ast.NodeTransformer):
@@ -177,18 +205,23 @@ class Instrument(ast.NodeTransformer):
             return node
         op, run = OPS[type(node.ops[0])]
         line = self.lines[rhs.lineno - 1]
-        left_end = len(line.encode()[:lhs.end_col_offset].decode())
-        right_start = len(line.encode()[:rhs.col_offset].decode())
+        left_end = len(line.encode()[: lhs.end_col_offset].decode())
+        right_start = len(line.encode()[: rhs.col_offset].decode())
         matches = list(OP_PATTERN.finditer(line, left_end, right_start))
         if len(matches) != 1 or matches[0].group() != op:
             return node
         m = matches[0]
         site = len(self.recorder.sites)
-        self.recorder.sites.append((self.path, rhs.lineno, line[:m.start()], op, line[m.end():]))
+        self.recorder.sites.append(
+            (self.path, rhs.lineno, line[: m.start()], op, line[m.end() :])
+        )
         self.recorder.ops.append(run)
         self.recorder.observed.append({})
-        wrapped = ast.Call(ast.Name("_br_record_comparison", ast.Load()),
-                           [ast.Constant(site), lhs, rhs], [])
+        wrapped = ast.Call(
+            ast.Name("_br_record_comparison", ast.Load()),
+            [ast.Constant(site), lhs, rhs],
+            [],
+        )
         return ast.copy_location(wrapped, node)
 
 
@@ -198,8 +231,9 @@ class Loader(importlib.machinery.SourceFileLoader):
         tree = ast.parse(src, self.path)
         rel = Path(self.path).relative_to(self.recorder.root).as_posix()
         tree = Instrument(self.recorder, rel, src).visit(tree)
-        return compile(ast.fix_missing_locations(tree), self.path, "exec",
-                       dont_inherit=True)
+        return compile(
+            ast.fix_missing_locations(tree), self.path, "exec", dont_inherit=True
+        )
 
 
 class Finder(importlib.abc.MetaPathFinder):
@@ -226,15 +260,20 @@ def install(recorder):
 def worker_profile():
     """Pytest's executor tests spawn a fresh interpreter to execute SQL."""
     from multiprocessing.util import Finalize
+
     global worker
     worker = Recorder(Path(os.environ["BR_PRED_SOURCE"]), [])
     install(worker)
+
     def save():
-        rows = [[site, obs, i in worker.unscoped]
-                for i, (site, obs) in enumerate(zip(worker.sites, worker.observed))
-                if obs or i in worker.unscoped]
+        rows = [
+            [site, obs, i in worker.unscoped]
+            for i, (site, obs) in enumerate(zip(worker.sites, worker.observed))
+            if obs or i in worker.unscoped
+        ]
         out = Path(os.environ["BR_PRED_WORK"]) / f"{os.getpid()}.json"
         out.write_text(json.dumps(rows, separators=(",", ":")))
+
     Finalize(None, save, exitpriority=0)
 
 
@@ -249,11 +288,14 @@ def _in_worker(nodeid, serialized):
 def tag_jobs():
     from concurrent.futures import ProcessPoolExecutor
     from multiprocessing.reduction import ForkingPickler
+
     original = ProcessPoolExecutor.submit
+
     def submit(pool, function, /, *args, **kwargs):
         nodeid = os.environ.get("PYTEST_CURRENT_TEST", "").rsplit(" (", 1)[0]
         serialized = bytes(ForkingPickler.dumps((function, args, kwargs)))
         return original(pool, _in_worker, nodeid or None, serialized)
+
     ProcessPoolExecutor.submit = submit
 
 
@@ -270,7 +312,9 @@ def main():
     os.chdir(source)
     install(recorder)
     tag_jobs()
-    os.environ["PATH"] = str(Path(sys.executable).parent) + os.pathsep + os.environ["PATH"]
+    os.environ["PATH"] = (
+        str(Path(sys.executable).parent) + os.pathsep + os.environ["PATH"]
+    )
     os.environ.setdefault("SKIP_INTEGRATION", "0")
     os.environ.setdefault("PYTEST_DISABLE_PLUGIN_AUTOLOAD", "1")
     with tempfile.TemporaryDirectory() as directory:

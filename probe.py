@@ -1,4 +1,5 @@
 """Replay short unittest batches in disposable processes, preserving uncertainty."""
+
 import importlib
 import os
 import signal
@@ -20,7 +21,12 @@ class TestReplay:
     def check(self, changes, numbers, max_wall, case_plan=None):
         if not numbers or max_wall < 0.25:
             return set()
-        if not self.preloaded and any(self.ids[n].startswith(("tests/test_optimizer.py", "tests/test_executor.py")) for n in numbers):
+        if not self.preloaded and any(
+            self.ids[n].startswith(
+                ("tests/test_optimizer.py", "tests/test_executor.py")
+            )
+            for n in numbers
+        ):
             # Only third-party libraries are shared. Every child imports SQLGlot
             # and the tests from its own complete patched source tree.
             importlib.import_module("pandas.testing")
@@ -43,6 +49,7 @@ class TestReplay:
                     os.environ["PYTHONPATH"] = str(temp)
                     if case_plan:
                         from fixture_cases import replay
+
                         for number in numbers:
                             try:
                                 replay(self.ids[number], case_plan[number])
@@ -64,7 +71,7 @@ class TestReplay:
                             pass
                         os.waitpid(pid, 0)
                         break
-                    time.sleep(.005)
+                    time.sleep(0.005)
                 os.set_blocking(read_fd, False)
                 try:
                     result = os.read(read_fd, 65536)
@@ -93,6 +100,7 @@ class TestReplay:
                 continue
 
         passed = []
+
         class Results(unittest.TestResult):
             def addSuccess(self, test):
                 super().addSuccess(test)

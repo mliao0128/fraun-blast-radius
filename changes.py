@@ -1,4 +1,5 @@
 """Apply checked unified hunks to the pinned tree, retaining old-side edit coordinates."""
+
 import re
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
@@ -6,7 +7,7 @@ from pathlib import Path, PurePosixPath
 
 @dataclass
 class Edit:
-    start: int                      # zero-based gap in the old file
+    start: int  # zero-based gap in the old file
     removed: list[str] = field(default_factory=list)
     added: list[str] = field(default_factory=list)
 
@@ -34,7 +35,19 @@ def file_path(label):
 
 def parse_patch(patch, source):
     stream = patch.splitlines()
-    if any(s.startswith(("rename from ", "rename to ", "copy from ", "copy to ", "GIT binary patch", "Binary files ")) for s in stream):
+    if any(
+        s.startswith(
+            (
+                "rename from ",
+                "rename to ",
+                "copy from ",
+                "copy to ",
+                "GIT binary patch",
+                "Binary files ",
+            )
+        )
+        for s in stream
+    ):
         raise ValueError("non-text change")
     result = []
     i = 0
@@ -122,7 +135,9 @@ def shadow_tree(base, destination, changes):
                 # The image uses checked-hash bytecode. The interpreter validates
                 # changed source even when the old and new file sizes coincide.
                 if rel not in dirs and rel not in overrides:
-                    (target / child.name).symlink_to(child, target_is_directory=child.is_dir())
+                    (target / child.name).symlink_to(
+                        child, target_is_directory=child.is_dir()
+                    )
     for path, content in overrides.items():
         if content is not None:
             (destination / path).write_text(content, encoding="utf-8")

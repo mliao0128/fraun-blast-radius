@@ -1,4 +1,5 @@
 """Trace class configuration reads and dispatch-table keys against pristine SQLGlot."""
+
 import ast
 import builtins
 import functools
@@ -30,6 +31,7 @@ def main(root, inventory, output):
         relative = file.relative_to(root).as_posix()
         module = relative[:-3].replace("/", ".").removesuffix(".__init__")
         tree = ast.parse(file.read_text(encoding="utf-8"))
+
         def collect(nodes, prefix):
             for node in nodes:
                 if isinstance(node, ast.ClassDef):
@@ -38,8 +40,14 @@ def main(root, inventory, output):
                     continue
                 names = node.targets if isinstance(node, ast.Assign) else [node.target]
                 for target in names:
-                    if isinstance(target, ast.Name) and (target.id.isupper() or target.id == "arg_types"):
-                        definitions[(module, ".".join(prefix), target.id)] = (relative, node.lineno)
+                    if isinstance(target, ast.Name) and (
+                        target.id.isupper() or target.id == "arg_types"
+                    ):
+                        definitions[(module, ".".join(prefix), target.id)] = (
+                            relative,
+                            node.lineno,
+                        )
+
         collect(tree.body, [])
     attributes = {item[-1] for item in definitions}
     active = set()
@@ -53,7 +61,9 @@ def main(root, inventory, output):
     def owner(cls, name):
         for ancestor in cls.__mro__:
             if name in vars(ancestor):
-                return definitions.get((ancestor.__module__, ancestor.__qualname__, name))
+                return definitions.get(
+                    (ancestor.__module__, ancestor.__qualname__, name)
+                )
         return None
 
     def read(obj, name):
@@ -83,44 +93,83 @@ def main(root, inventory, output):
 
         def visit_Attribute(self, node):
             self.generic_visit(node)
-            if isinstance(node.ctx, ast.Load) and node.attr in attributes and not (
-                isinstance(node.value, ast.Name) and node.value.id in {"TokenType", "DType", "Dialects"}
+            if (
+                isinstance(node.ctx, ast.Load)
+                and node.attr in attributes
+                and not (
+                    isinstance(node.value, ast.Name)
+                    and node.value.id in {"TokenType", "DType", "Dialects"}
+                )
             ):
-                return ast.copy_location(ast.Call(ast.Name("_br_read", ast.Load()),
-                    [node.value, ast.Constant(node.attr)], []), node)
+                return ast.copy_location(
+                    ast.Call(
+                        ast.Name("_br_read", ast.Load()),
+                        [node.value, ast.Constant(node.attr)],
+                        [],
+                    ),
+                    node,
+                )
             return node
 
         def direct(self, target, key):
             # Duplicating a plain local name read has no user-defined side effects.
-            if isinstance(target, ast.Attribute) and target.attr in attributes and isinstance(target.value, ast.Name):
-                return ast.copy_location(ast.Call(ast.Name("_br_key", ast.Load()),
-                    [ast.Name(target.value.id, ast.Load()), ast.Constant(target.attr), key], []), key)
+            if (
+                isinstance(target, ast.Attribute)
+                and target.attr in attributes
+                and isinstance(target.value, ast.Name)
+            ):
+                return ast.copy_location(
+                    ast.Call(
+                        ast.Name("_br_key", ast.Load()),
+                        [
+                            ast.Name(target.value.id, ast.Load()),
+                            ast.Constant(target.attr),
+                            key,
+                        ],
+                        [],
+                    ),
+                    key,
+                )
             return key
 
         def visit_Subscript(self, node):
-            node.slice = self.direct(node.value, node.slice) if not isinstance(node.slice, ast.Slice) else node.slice
+            node.slice = (
+                self.direct(node.value, node.slice)
+                if not isinstance(node.slice, ast.Slice)
+                else node.slice
+            )
             return self.generic_visit(node)
 
         def visit_Call(self, node):
-            if isinstance(node.func, ast.Attribute) and node.func.attr == "get" and node.args:
+            if (
+                isinstance(node.func, ast.Attribute)
+                and node.func.attr == "get"
+                and node.args
+            ):
                 node.args[0] = self.direct(node.func.value, node.args[0])
             return self.generic_visit(node)
 
     builtins._br_read = read
     builtins._br_key = key_read
     original = SourceFileLoader.get_code
+
     def get_code(loader, name):
         if name == "sqlglot" or name.startswith("sqlglot."):
             path = loader.get_filename(name)
-            tree = Instrument(Path(path).relative_to(root).as_posix()).visit(ast.parse(Path(path).read_bytes(), path))
-            return compile(ast.fix_missing_locations(tree), path, "exec", dont_inherit=True)
+            tree = Instrument(Path(path).relative_to(root).as_posix()).visit(
+                ast.parse(Path(path).read_bytes(), path)
+            )
+            return compile(
+                ast.fix_missing_locations(tree), path, "exec", dont_inherit=True
+            )
         return original(loader, name)
+
     SourceFileLoader.get_code = get_code
 
     scope_index = defaultdict(set)
     for name, number in numbers.items():
         parts = name.split("::")
-        for length in range(len(parts)+1):
+        for length in range(len(parts) + 1):
             scope_index["::".join(parts[:length])].add(number)
 
     class Trace:
@@ -142,6 +191,7 @@ def main(root, inventory, output):
                 active.update(previous)
                 visited.clear()
                 visited.update(buffer)
+
         def pytest_collection_modifyitems(self, items):
             items[:] = [item for item in items if item.nodeid in numbers]
 
@@ -157,14 +207,28 @@ def main(root, inventory, output):
                 visited.clear()
 
     with patch.object(ProcessPoolExecutor, "__new__", serializing_pool):
-        result = pytest.main(["tests", "-q", "--tb=line", "-p", "no:cacheprovider"], plugins=[Trace()])
+        result = pytest.main(
+            ["tests", "-q", "--tb=line", "-p", "no:cacheprovider"], plugins=[Trace()]
+        )
     if result != 0:
         raise RuntimeError(result)
+
     def label(mark):
         return f"{mark[0]}:{mark[1]}"
-    data = {"ids": ids, "access": {label(mark): sorted(indices) for mark, indices in observed.items()},
-            "keys": {label(mark) + "\n" + key: sorted(indices) for (mark, key), indices in keys.items()}}
-    data["dicts"] = {mark: {k: sorted(v) for k, v in observations.items()} for mark, observations in values.seen.items() if mark not in values.unknown}
+
+    data = {
+        "ids": ids,
+        "access": {label(mark): sorted(indices) for mark, indices in observed.items()},
+        "keys": {
+            label(mark) + "\n" + key: sorted(indices)
+            for (mark, key), indices in keys.items()
+        },
+    }
+    data["dicts"] = {
+        mark: {k: sorted(v) for k, v in observations.items()}
+        for mark, observations in values.seen.items()
+        if mark not in values.unknown
+    }
     with gzip.open(output, "wt", encoding="utf-8") as out:
         json.dump(data, out, separators=(",", ":"))
 
