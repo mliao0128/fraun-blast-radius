@@ -104,23 +104,32 @@ class Recorder:
         self.sites = []
         self.ops = []
         self.observed = []
-        self.unscoped = set()
+        self.unscoped = {}
         self.completed = set()
         self.failed = set()
 
     def compare(self, index, left, right):
-        result = self.ops[index](left, right)
+        try:
+            result = self.ops[index](left, right)
+        except BaseException:
+            # Some tests catch comparison exceptions. The replacement could
+            # return normally or raise a different exception.
+            self.record(index, 0)
+            raise
+        self.record(index, relation(left, right))
+        return result
+
+    def record(self, index, state):
         if self.current is None:
-            self.unscoped.add(index)
+            self.unscoped[index] = self.unscoped.get(index, 0) | (1 << state)
         else:
             per_test = self.observed[index]
-            per_test[self.current] = per_test.get(self.current, 0) | (
-                1 << relation(left, right)
-            )
-        return result
+            per_test[self.current] = per_test.get(self.current, 0) | (1 << state)
 
     @pytest.hookimpl(wrapper=True)
     def pytest_runtest_call(self, item):
+        # Class and session fixtures can initialize state shared by later
+        # tests. Their operand observations stay in the unscoped mask.
         self.current = self.ids.get(item.nodeid)
         try:
             return (yield)
@@ -147,7 +156,7 @@ class Recorder:
                     self.observed.append({})
                 index = indices[site]
                 if shared:
-                    self.unscoped.add(index)
+                    self.unscoped[index] = self.unscoped.get(index, 0) | shared
                 per_test = self.observed[index]
                 for nodeid, mask in observed.items():
                     test = self.ids[nodeid]
@@ -156,12 +165,14 @@ class Recorder:
     def save(self, path):
         sites = defaultdict(lambda: defaultdict(list))
         for index, (file, line, prefix, op, suffix) in enumerate(self.sites):
-            if index in self.unscoped or not self.observed[index]:
+            if not self.observed[index]:
                 continue
             groups = defaultdict(list)
             for test, mask in self.observed[index].items():
                 groups[mask].append(test)
-            sites[file][line].append([prefix, op, suffix, groups])
+            sites[file][line].append(
+                [prefix, op, suffix, groups, self.unscoped.get(index, 0)]
+            )
         result = {
             "ids": list(self.ids),
             "incomplete": sorted(
@@ -199,8 +210,6 @@ class Instrument(ast.NodeTransformer):
         if not self.in_function or len(node.ops) != 1 or type(node.ops[0]) not in OPS:
             return node
         lhs, rhs = node.left, node.comparators[0]
-        if not isinstance(rhs, (ast.Constant, ast.Tuple, ast.Attribute)):
-            return node
         if lhs.end_lineno != rhs.lineno:
             return node
         op, run = OPS[type(node.ops[0])]
@@ -267,7 +276,7 @@ def worker_profile():
 
     def save():
         rows = [
-            [site, obs, i in worker.unscoped]
+            [site, obs, worker.unscoped.get(i, 0)]
             for i, (site, obs) in enumerate(zip(worker.sites, worker.observed))
             if obs or i in worker.unscoped
         ]
@@ -292,9 +301,10 @@ def tag_jobs():
     original = ProcessPoolExecutor.submit
 
     def submit(pool, function, /, *args, **kwargs):
-        nodeid = os.environ.get("PYTEST_CURRENT_TEST", "").rsplit(" (", 1)[0]
+        nodeid, _, phase = os.environ.get("PYTEST_CURRENT_TEST", "").rpartition(" (")
         serialized = bytes(ForkingPickler.dumps((function, args, kwargs)))
-        return original(pool, _in_worker, nodeid or None, serialized)
+        tag = nodeid if phase == "call)" else None
+        return original(pool, _in_worker, tag, serialized)
 
     ProcessPoolExecutor.submit = submit
 

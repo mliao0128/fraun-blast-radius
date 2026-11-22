@@ -329,15 +329,19 @@ class Impact:
                         }
                     )
                 if len(edit.added) == len(edit.removed) == 1:
-                    observed = predicate_map.candidates(
+                    comparison = predicate_map.candidates(
                         c.path, edit.start + 1, edit.removed[0], edit.added[0]
                     )
-                    if observed is not None:
+                    if comparison is not None:
+                        affected, observed = comparison
                         direct = self.lookup_lines(c.path, old_lines)
+                        # The operand and line profiles are independent clean
+                        # runs. Keep disagreement unless a scoped observation
+                        # positively shows that the comparison stays unchanged.
+                        measured = {self.number[n] for n in observed if n in self.number}
+                        selected.update(direct - measured)
                         selected.update(
-                            self.number[n]
-                            for n in observed
-                            if n in self.number and self.number[n] in direct
+                            self.number[n] for n in affected if n in self.number
                         )
                         continue
                 for line in old_lines:
