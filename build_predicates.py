@@ -165,7 +165,7 @@ class Recorder:
     def save(self, path):
         sites = defaultdict(lambda: defaultdict(list))
         for index, (file, line, prefix, op, suffix) in enumerate(self.sites):
-            if not self.observed[index]:
+            if not self.observed[index] and index not in self.unscoped:
                 continue
             groups = defaultdict(list)
             for test, mask in self.observed[index].items():

@@ -38,6 +38,7 @@ def main():
     source = args.source.resolve()
     inventory = json.loads((args.data / "tests.json").read_bytes())["tests"]
     ms = {test["number"]: round(1000 * test["seconds"]) for test in inventory}
+    full_cost, full_workers = pack(ms, ms)
     nodeid = {test["number"]: test["id"] for test in inventory}
     impact = Impact(inventory)
     replay = TestReplay(source, inventory)
@@ -119,7 +120,11 @@ def main():
             candidates = set(ms)
             before = len(ms)
         cost, workers = pack(candidates, ms)
-        if len(workers) > 1 and len(candidates) < len(ms):
+        if full_cost <= cost:
+            # Repacking the full inventory can cover every test at the same
+            # cost, even when a single extra test won't fit the current bins.
+            cost, workers = full_cost, full_workers
+        elif len(workers) > 1 and len(candidates) < len(ms):
             optional = set()
             for change in changes:
                 if change.path.endswith(".py"):

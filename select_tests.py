@@ -332,6 +332,11 @@ class Impact:
                     comparison = predicate_map.candidates(
                         c.path, edit.start + 1, edit.removed[0], edit.added[0]
                     )
+                    if comparison is predicate_map.SHARED_CHANGE:
+                        # Collection and shared fixtures can affect tests that
+                        # never execute this line and cannot run in isolation.
+                        self.initializations.clear()
+                        return self.all.copy(), False
                     if comparison is not None:
                         affected, observed = comparison
                         direct = self.lookup_lines(c.path, old_lines)

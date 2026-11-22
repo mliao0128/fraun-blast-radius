@@ -6,6 +6,9 @@ import json
 from pathlib import Path
 
 
+SHARED_CHANGE = object()
+
+
 @functools.cache
 def _profile():
     path = Path(__file__).with_name("predicates.json.gz")
@@ -42,7 +45,7 @@ def _can_change(mask, old, new):
 
 
 def candidates(path, lineno, before, after):
-    """Return potentially affected and observed test IDs for a pure substitution."""
+    """Return affected/observed IDs, SHARED_CHANGE, or None for an unknown site."""
     sites, ids, incomplete = _profile()
     for row in sites.get(path, {}).get(str(lineno), []):
         prefix, old, suffix, observations, *shared = row
@@ -54,7 +57,7 @@ def candidates(path, lineno, before, after):
             # An invocation during collection or outside a known test can
             # affect later tests. Narrow only if its outcome is unchanged.
             if shared and _can_change(shared[0], old, new):
-                return None
+                return SHARED_CHANGE
             result = {ids[i] for i in incomplete}
             observed = set()
             for states, indices in observations.items():
